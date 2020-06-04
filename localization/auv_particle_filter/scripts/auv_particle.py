@@ -28,14 +28,14 @@ class Particle(object):
                  meas_cov=0.01, process_cov=[0.,0.,0.,0.,0.,0.], map_frame='map', odom_frame='odom',
                  meas_as='/mbes_server', pc_mbes_top='/sim_mbes'):
 
-        self.p_num = p_num # index starts from 0
-        self.index = index
+        self.p_num = p_num
+        self.index = index # index starts from 0
         # self.weight = 1.
         self.p_pose = Pose()
         self.odom_frame = odom_frame
         self.map_frame = map_frame
         self.mbes_tf_mat = mbes_tf_matrix
-        self.m2o_tf_mat = m2o_matrix 
+        self.m2o_tf_mat = m2o_matrix
         self.init_cov = init_cov
         self.meas_cov = meas_cov
         self.process_cov = np.asarray(process_cov)
@@ -47,7 +47,6 @@ class Particle(object):
         self.ac_mbes.wait_for_server()
 
         self.pcloud_pub = rospy.Publisher(pc_mbes_top, PointCloud2, queue_size=10)
-        self.pose_pub = rospy.Publisher('/pf/particles', PoseStamped, queue_size=10)
 
         # Distribute particles around initial pose
         self.p_pose.position.x = 0.
@@ -59,7 +58,7 @@ class Particle(object):
         self.p_pose.orientation.w = 1.
 
         self.add_noise(init_cov)
- 
+
     def add_noise(self, noise):
         noise_cov =np.diag(noise)
         roll, pitch, yaw = euler_from_quaternion([self.p_pose.orientation.x,
@@ -70,12 +69,12 @@ class Particle(object):
         current_pose = np.array([self.p_pose.position.x,
                                 self.p_pose.position.y,
                                 self.p_pose.position.z,
-                                roll, 
+                                roll,
                                 pitch,
                                 yaw])[np.newaxis]
-       
+
         noisy_pose = current_pose.T + np.matmul(np.sqrt(noise_cov), np.random.randn(6,1))
-        
+
         self.p_pose.position.x = noisy_pose[0][0]
         self.p_pose.position.y = noisy_pose[1][0]
         self.p_pose.position.z = noisy_pose[2][0]
@@ -102,7 +101,7 @@ class Particle(object):
     def motion_pred(self, odom_t, dt):
         # Generate noise
         noise_vec = (np.sqrt(self.process_cov)*np.random.randn(1, 6)).flatten()
-        
+
         # Angular motion
         [roll, pitch, yaw] = euler_from_quaternion([self.p_pose.orientation.x,
                                             self.p_pose.orientation.y,
@@ -130,19 +129,19 @@ class Particle(object):
 
         rot_mat_t = self.fullRotation(roll_t, pitch_t, yaw_t)
         step_t = np.matmul(rot_mat_t, vel_p * dt) + noise_vec[0:3]
-        
+
         self.p_pose.position.x += step_t[0]
         self.p_pose.position.y += step_t[1]
         self.p_pose.position.z += step_t[2]
- 
+
     def meas_update(self, mbes_meas_ranges):
         # Predict mbes ping given current particle pose and map
         mbes_i = self.predict_meas()
         mbes_i_ranges = pcloud2ranges(mbes_i, self.p_pose)
         #  print "Particle ", self.index
-        #  print(mbes_meas_ranges)
-        #  print(mbes_i_ranges)
-        
+        #print(mbes_meas_ranges)
+        #print(mbes_i_ranges)
+
         # Publish (for visualization)
         self.pcloud_pub.publish(mbes_i)
 
@@ -164,8 +163,8 @@ class Particle(object):
             print ("missing pings!")
             w_i = 0.
         return w_i
-     
-        
+
+
     def weight_mv(self, mbes_meas_ranges, mbes_sim_ranges ):
         if len(mbes_meas_ranges) == len(mbes_sim_ranges):
             w_i = multivariate_normal.pdf(mbes_sim_ranges, mean=mbes_meas_ranges, cov=self.meas_cov)
@@ -173,8 +172,8 @@ class Particle(object):
             print ("missing pings!")
             w_i = 0.
         return w_i
-    
-    
+
+
     def weight_avg(self, mbes_meas_ranges, mbes_sim_ranges ):
         if len(mbes_meas_ranges) == len(mbes_sim_ranges):
             w_i = 1./self.p_num
@@ -208,8 +207,12 @@ class Particle(object):
 
         # Get result from action server
         self.ac_mbes.send_goal(mbes_goal)
+        print(self.index, mbes_goal)
+        print("one")
         self.ac_mbes.wait_for_result()
+        print("two")
         mbes_res = self.ac_mbes.get_result()
+        print("three")
 
         # Pack result into PointCloud2
         mbes_pcloud = PointCloud2()
